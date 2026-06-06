@@ -1,0 +1,55 @@
+# FashionSense AI — Python dependencies
+# ── Installation ─────────────────────────────────────────────────────────────
+#   Local (venv):   pip install -r requirements.txt
+#   Kaggle notebook: !pip install -q transformers==4.40.0 open_clip_torch umap-learn
+#
+# Python >= 3.10 required
+
+# ── Core ML ──────────────────────────────────────────────────────────────────
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0                  # required by some torch distributions
+transformers==4.40.0               # CLIPModel, CLIPTokenizer — pinned for ViT compat
+open_clip_torch>=2.24.0            # alternative CLIP weights loader
+timm>=0.9.16                       # vision model utilities
+
+# ── Data processing ───────────────────────────────────────────────────────────
+numpy>=1.26.0
+pandas>=2.2.0
+Pillow>=10.2.0
+scipy>=1.13.0                      # Beta distribution (MixUp), stats utilities
+scikit-learn>=1.4.0                # TSNE, metrics, roc_curve, confusion_matrix
+
+# ── Dimensionality reduction & visualization ──────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0
+umap-learn>=0.5.6                  # UMAP embedding visualization (optional alt to t-SNE)
+
+# ── Backend — FastAPI inference server ────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9            # multipart/form-data file uploads
+pydantic>=2.7.0                    # request/response models
+httpx>=0.27.0                      # async HTTP client (for internal service calls)
+
+# ── Storage & cloud ───────────────────────────────────────────────────────────
+boto3>=1.34.0                      # S3: image + heatmap upload, pre-signed URLs
+python-dotenv>=1.0.0               # load .env for local dev
+
+# ── Auth & security ───────────────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0   # JWT encode/decode
+passlib[bcrypt]>=1.7.4             # password hashing
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.30                 # ORM for PostgreSQL
+asyncpg>=0.29.0                    # async PostgreSQL driver
+alembic>=1.13.0                    # DB migrations
+
+# ── Caching ───────────────────────────────────────────────────────────────────
+redis>=5.0.4                       # inference result caching
+
+# ── Dev & testing ─────────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0                      # TestClient for FastAPI
+locust>=2.28.0                     # load testing (50 concurrent users)

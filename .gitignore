@@ -1,0 +1,103 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+pip-wheel-metadata/
+.installed.cfg
+MANIFEST
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# ── Environment variables (never commit secrets) ───────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Model checkpoints & weights (too large for git — use DVC or Kaggle) ───────
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+saved_models/
+
+# ── Datasets (never commit raw data) ──────────────────────────────────────────
+/data/
+/datasets/
+*.csv
+*.json.gz
+*.zip
+*.tar
+*.tar.gz
+*.h5
+*.hdf5
+
+# ── Kaggle notebook outputs ────────────────────────────────────────────────────
+notebooks/.ipynb_checkpoints/
+notebooks/output/
+**/.ipynb_checkpoints/
+
+# ── Visualizations / generated images ─────────────────────────────────────────
+visualizations/
+outputs/
+*.png
+*.jpg
+*.jpeg
+*.gif
+!docs/assets/*.png
+!docs/assets/*.jpg
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+wandb/
+runs/
+lightning_logs/
+mlruns/
+
+# ── IDE & editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ── Mypy / type checking ──────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ── AWS / cloud credentials ───────────────────────────────────────────────────
+.aws/
+*.pem
+*.key
+kaggle.json
+
+# ── Temporary files ───────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
