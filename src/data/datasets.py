@@ -1,10 +1,16 @@
 """
-PyTorch Dataset classes for all three training datasets.
+PyTorch Dataset classes for all training datasets.
 
 Kaggle input paths (set automatically when datasets are added to a Kaggle notebook):
   DeepFashion2  → /kaggle/input/deepfashion2/
   Fashion-MNIST → /kaggle/input/fashionmnist/
-  Polyvore      → /kaggle/input/polyvore-outfits/
+  Polyvore      → /kaggle/input/<polyvore-slug>/   (optional — see SyntheticCompatibilityDataset)
+
+Compatibility training fallback:
+  If no Polyvore dataset is available, use SyntheticCompatibilityDataset which
+  generates triplets directly from DeepFashion2 using fashion category rules:
+    Compatible  → upper-body item paired with lower-body item (e.g. top + trousers)
+    Incompatible → item paired with a full-body garment or same-body-zone item
 """
 
 import os
@@ -150,7 +156,103 @@ class FashionMNISTDataset(Dataset):
         return image, int(self.labels[idx])
 
 
-# ── Polyvore Outfits (Compatibility) ─────────────────────────────────────────
+# ── Synthetic Compatibility Dataset (DeepFashion2-based fallback) ─────────────
+
+# Fashion compatibility groups derived from garment body-zone logic.
+# Compatible pair = one item from UPPER + one from LOWER (a full outfit).
+# Incompatible pair = two items from the same zone (e.g. two tops).
+_UPPER = {0, 1, 2, 3, 4, 5}   # top, outwear, vest, sling (indices 0-5)
+_LOWER = {6, 7, 8}             # shorts, trousers, skirt
+_FULL  = {9, 10, 11, 12}       # dresses (standalone — incompatible with anything)
+
+def _compatibility_group(label: int) -> str:
+    if label in _UPPER: return "upper"
+    if label in _LOWER: return "lower"
+    return "full"
+
+def _are_compatible(label_a: int, label_b: int) -> bool:
+    ga, gb = _compatibility_group(label_a), _compatibility_group(label_b)
+    return (ga == "upper" and gb == "lower") or (ga == "lower" and gb == "upper")
+
+
+class SyntheticCompatibilityDataset(Dataset):
+    """
+    Generates outfit compatibility triplets entirely from DeepFashion2.
+
+    No external dataset required — uses the category labels already present
+    in DeepFashion2 annotations to define compatible / incompatible pairs:
+
+      anchor   : any item
+      positive : item from the complementary body zone (upper↔lower)
+      negative : item from the same body zone as the anchor, or a full-body dress
+
+    This gives a principled fashion-domain signal without Polyvore.
+    Triplet sampling is online (random each epoch), so the effective dataset
+    size is much larger than the raw image count.
+    """
+
+    def __init__(
+        self,
+        df2_dataset: "DeepFashion2Dataset",
+        transform: Optional[Callable] = None,
+        max_samples: Optional[int] = None,
+    ):
+        self.transform = transform
+
+        # Bucket image paths by compatibility group
+        self._by_group: Dict[str, List[Path]] = {"upper": [], "lower": [], "full": []}
+        for path, label in df2_dataset.samples:
+            self._by_group[_compatibility_group(label)].append(path)
+
+        # Anchor pool: only upper + lower (dresses can't form a 2-piece outfit)
+        self.anchors: List[Tuple[Path, str]] = [
+            (p, "upper") for p in self._by_group["upper"]
+        ] + [
+            (p, "lower") for p in self._by_group["lower"]
+        ]
+        if max_samples:
+            self.anchors = self.anchors[:max_samples]
+
+        print(
+            f"SyntheticCompatibility: {len(self.anchors):,} anchors | "
+            f"upper={len(self._by_group['upper']):,} "
+            f"lower={len(self._by_group['lower']):,} "
+            f"full={len(self._by_group['full']):,}"
+        )
+
+    def _load(self, path: Path) -> Image.Image:
+        return Image.open(path).convert("RGB")
+
+    def _random_from(self, group: str) -> Path:
+        return random.choice(self._by_group[group])
+
+    def __len__(self) -> int:
+        return len(self.anchors)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        anc_path, anc_group = self.anchors[idx]
+
+        # Positive: complementary zone (upper→lower or lower→upper)
+        pos_group = "lower" if anc_group == "upper" else "upper"
+        pos_path  = self._random_from(pos_group)
+
+        # Negative: same zone as anchor (two tops, two bottoms) OR a full-body dress
+        neg_group = random.choice([anc_group, "full"])
+        neg_candidates = self._by_group[neg_group]
+        neg_path = random.choice(neg_candidates)
+        # Ensure negative is a different image from the anchor
+        while neg_path == anc_path and len(neg_candidates) > 1:
+            neg_path = random.choice(neg_candidates)
+
+        anchor, positive, negative = self._load(anc_path), self._load(pos_path), self._load(neg_path)
+        if self.transform:
+            anchor   = self.transform(anchor)
+            positive = self.transform(positive)
+            negative = self.transform(negative)
+        return anchor, positive, negative
+
+
+# ── Polyvore Outfits (Compatibility) — optional ───────────────────────────────
 
 class PolyvoreDataset(Dataset):
     """

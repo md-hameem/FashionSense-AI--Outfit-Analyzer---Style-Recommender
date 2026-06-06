@@ -8,6 +8,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `SyntheticCompatibilityDataset` in `src/data/datasets.py` — generates outfit compatibility triplets directly from DeepFashion2 using fashion body-zone rules (upper↔lower = compatible, same-zone or dress = incompatible). No external dataset required.
+- `PolyvoreDataset` now tries multiple JSON filename patterns (`train_no_dup.json`, `train.json`, `train_compatibility.json`) and multiple image extensions to handle different Polyvore re-uploads on Kaggle.
+
+### Changed
+- Kaggle notebook `cell-4` (Config): Polyvore path auto-detected by scanning `/kaggle/input/*` for known slugs and `images/` + `.json` structure. Sets `COMPAT_MODE = 'polyvore' | 'synthetic'` printed at startup.
+- Kaggle notebook `cell-11` (Dataset table): Compatibility row is now dynamic — reflects actual mode used.
+- Kaggle notebook `cell-19` (Dataset classes): Added `SyntheticCompatibilityDataset` and hardened `PolyvoreDataset` with multi-pattern JSON/image loading.
+- Kaggle notebook `cell-31` (Phase 2 training): Auto-selects dataset based on `COMPAT_MODE`; no code changes needed by user.
+- Kaggle notebook `cell-33` (Pairs gallery): Decodes tensors back to PIL images instead of re-opening files — works identically for both Polyvore and Synthetic modes.
+
 ### Planned
 - FastAPI inference server (`backend/`)
 - React SPA frontend (`frontend/`)
