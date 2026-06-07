@@ -9,6 +9,7 @@ Checkpoints are saved to /kaggle/working/ when running on Kaggle.
 """
 
 import os
+import math
 import time
 import logging
 from pathlib import Path
@@ -18,7 +19,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import LambdaLR
 from torch.cuda.amp import GradScaler, autocast
 
 from ..models.fashionsense import FashionSenseModel
@@ -33,27 +34,31 @@ class Trainer:
     Manages the full training lifecycle for FashionSenseModel.
 
     Config keys (all optional, sensible defaults provided):
-        lr             : float  = 2e-5   (low LR — fine-tuning pretrained ViT)
+        lr             : float  = 3e-5   (head LR; backbone gets LLRD-decayed fraction)
+        lr_decay       : float  = 0.75   (LLRD decay rate per ViT block depth)
         weight_decay   : float  = 0.01
-        epochs_cls     : int    = 15     (classification phase)
+        epochs_cls     : int    = 30     (classification phase — more epochs for 95%+)
         epochs_compat  : int    = 10     (compatibility phase)
+        warmup_epochs  : int    = 3      (linear warmup before cosine decay)
         batch_size     : int    = 64
         grad_clip      : float  = 1.0
         use_mixup      : bool   = True
         checkpoint_dir : str    = "/kaggle/working/checkpoints"
-        log_every      : int    = 50     (steps between console logs)
+        log_every      : int    = 100    (steps between console logs)
     """
 
     DEFAULT_CONFIG = {
-        "lr":             2e-5,
+        "lr":             3e-5,
+        "lr_decay":       0.75,
         "weight_decay":   0.01,
-        "epochs_cls":     15,
+        "epochs_cls":     30,
         "epochs_compat":  10,
+        "warmup_epochs":  3,
         "batch_size":     64,
         "grad_clip":      1.0,
         "use_mixup":      True,
         "checkpoint_dir": "/kaggle/working/checkpoints",
-        "log_every":      50,
+        "log_every":      100,
     }
 
     def __init__(self, config: Optional[Dict] = None):
@@ -69,18 +74,44 @@ class Trainer:
 
     # ── Phase 1: Classification ───────────────────────────────────────────────
 
+    def _build_warmup_cosine_scheduler(
+        self, optimizer, num_epochs: int, warmup_epochs: int
+    ) -> LambdaLR:
+        def lr_lambda(epoch: int) -> float:
+            if epoch < warmup_epochs:
+                return (epoch + 1) / max(warmup_epochs, 1)
+            progress = (epoch - warmup_epochs) / max(num_epochs - warmup_epochs, 1)
+            return 0.5 * (1.0 + math.cos(math.pi * progress))
+        return LambdaLR(optimizer, lr_lambda)
+
     def train_classification(
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
     ):
         log.info("=== Phase 1: Classification Training ===")
-        optimizer = AdamW(
-            filter(lambda p: p.requires_grad, self.model.parameters()),
-            lr=self.cfg["lr"],
-            weight_decay=self.cfg["weight_decay"],
+
+        # LLRD optimizer: each ViT layer gets a decayed LR from deep → shallow
+        visual_enc = self.model.visual_encoder
+        if hasattr(visual_enc, "get_llrd_param_groups"):
+            param_groups = visual_enc.get_llrd_param_groups(
+                base_lr=self.cfg["lr"],
+                decay_rate=self.cfg.get("lr_decay", 0.75),
+            )
+            log.info(
+                f"LLRD: {len(param_groups)} param groups | "
+                f"head LR={self.cfg['lr']:.1e} | "
+                f"embed LR={param_groups[-1]['lr']:.2e}"
+            )
+        else:
+            param_groups = list(filter(lambda p: p.requires_grad, self.model.parameters()))
+
+        optimizer = AdamW(param_groups, weight_decay=self.cfg["weight_decay"])
+        scheduler = self._build_warmup_cosine_scheduler(
+            optimizer,
+            num_epochs=self.cfg["epochs_cls"],
+            warmup_epochs=self.cfg.get("warmup_epochs", 3),
         )
-        scheduler = CosineAnnealingLR(optimizer, T_max=self.cfg["epochs_cls"])
 
         best_val_acc = 0.0
         for epoch in range(1, self.cfg["epochs_cls"] + 1):
